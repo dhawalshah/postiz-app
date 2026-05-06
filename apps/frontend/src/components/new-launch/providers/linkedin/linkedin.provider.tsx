@@ -35,6 +35,19 @@ export default withProvider<LinkedinDto>({
   checkValidity: async (posts, vals) => {
     const [firstPost, ...restPosts] = posts ?? [];
 
+    const firstPostHasPdf = firstPost?.some(
+      (p) => p?.path?.toLowerCase?.()?.includes?.('pdf')
+    );
+
+    if (firstPostHasPdf) {
+      if ((firstPost?.length ?? 0) > 1) {
+        return 'A PDF document must be the only attachment.';
+      }
+      if (vals?.post_as_images_carousel) {
+        return 'Use images (not a PDF) for the carousel feature.';
+      }
+    }
+
     if (
       vals?.post_as_images_carousel &&
       ((firstPost?.length ?? 0) < 2 ||

@@ -539,7 +539,10 @@ export const Editor: FC<{
       appendImages(result);
       uppy.clear();
     },
-    allowedFileTypes: 'image/*,video/mp4',
+    allowedFileTypes:
+      identifier?.startsWith('linkedin')
+        ? 'image/*,video/mp4,application/pdf'
+        : 'image/*,video/mp4',
   });
 
   const onDrop = useCallback(

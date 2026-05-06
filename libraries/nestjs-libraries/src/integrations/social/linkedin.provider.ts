@@ -498,8 +498,9 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
 
   private async prepareMediaBuffer(mediaUrl: string): Promise<Buffer> {
     const isVideo = mediaUrl.indexOf('mp4') > -1;
+    const isPdf = mediaUrl.toLowerCase().indexOf('pdf') > -1;
 
-    if (isVideo) {
+    if (isVideo || isPdf) {
       return Buffer.from(await readOrFetch(mediaUrl));
     }
 
@@ -511,7 +512,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       .toBuffer();
   }
 
-  private buildPostContent(isPdf: boolean, mediaIds: string[]) {
+  private buildPostContent(mediaIds: string[], pdfTitle?: string) {
     if (mediaIds.length === 0) {
       return {};
     }
@@ -520,7 +521,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       return {
         content: {
           media: {
-            ...(isPdf ? { title: 'slides.pdf' } : {}),
+            ...(pdfTitle ? { title: pdfTitle } : {}),
             id: mediaIds[0],
           },
         },
@@ -541,7 +542,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     type: 'company' | 'personal',
     message: string,
     mediaIds: string[],
-    isPdf: boolean
+    pdfTitle?: string
   ) {
     const author =
       type === 'personal' ? `urn:li:person:${id}` : `urn:li:organization:${id}`;
@@ -555,7 +556,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
         targetEntities: [] as string[],
         thirdPartyDistributionChannels: [] as string[],
       },
-      ...this.buildPostContent(isPdf, mediaIds),
+      ...this.buildPostContent(mediaIds, pdfTitle),
       lifecycleState: 'PUBLISHED',
       isReshareDisabledByAuthor: false,
     };
@@ -567,14 +568,14 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     firstPost: PostDetails,
     mediaIds: string[],
     type: 'company' | 'personal',
-    isPdf: boolean
+    pdfTitle?: string
   ): Promise<string> {
     const postPayload = this.createLinkedInPostPayload(
       id,
       type,
       firstPost.message,
       mediaIds,
-      isPdf
+      pdfTitle
     );
 
     const response = await this.fetch('https://api.linkedin.com/rest/posts', {
@@ -679,6 +680,20 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       uploadedMedia[processedFirstPost.id] || []
     ).filter(Boolean);
 
+    // Determine display title for document posts (carousel or native PDF)
+    let pdfTitle: string | undefined;
+    if (firstPost.settings?.post_as_images_carousel) {
+      pdfTitle = 'slides.pdf';
+    } else {
+      const nativePdf = (processedFirstPost.media || []).find((m) =>
+        m.path.toLowerCase().includes('pdf')
+      );
+      if (nativePdf) {
+        pdfTitle =
+          nativePdf.path.split('/').pop()?.split('?')[0] || 'document.pdf';
+      }
+    }
+
     // Create the main LinkedIn post
     const mainPostId = await this.createMainPost(
       id,
@@ -686,7 +701,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       processedFirstPost,
       mainPostMediaIds,
       type,
-      !!firstPost.settings?.post_as_images_carousel
+      pdfTitle
     );
 
     // Build response array starting with main post
