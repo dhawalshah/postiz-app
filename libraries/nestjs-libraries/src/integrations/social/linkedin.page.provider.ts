@@ -6,7 +6,7 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
-import { LinkedinProvider } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
+import { LinkedinProvider, LINKEDIN_API_VERSION } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
@@ -128,7 +128,7 @@ export class LinkedinPageProvider
           headers: {
             Authorization: `Bearer ${accessToken}`,
             'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
           },
         }
       )
@@ -415,7 +415,7 @@ export class LinkedinPageProvider
           headers: {
             'X-Restli-Protocol-Version': '2.0.0',
             'Content-Type': 'application/json',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${integration.token}`,
           },
         }
@@ -444,7 +444,7 @@ export class LinkedinPageProvider
         headers: {
           'X-Restli-Protocol-Version': '2.0.0',
           'Content-Type': 'application/json',
-          'LinkedIn-Version': '202601',
+          'LinkedIn-Version': LINKEDIN_API_VERSION,
           Authorization: `Bearer ${integration.token}`,
         },
       });
@@ -493,7 +493,7 @@ export class LinkedinPageProvider
           headers: {
             'X-Restli-Protocol-Version': '2.0.0',
             'Content-Type': 'application/json',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${integration.token}`,
           },
         }
