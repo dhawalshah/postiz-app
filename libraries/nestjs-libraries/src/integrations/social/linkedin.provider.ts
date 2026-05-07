@@ -278,52 +278,70 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     const sendUrlRequest = uploadInstructions?.[0]?.uploadUrl || uploadUrl;
     const finalOutput = video || image || document;
 
-    const etags = [];
-    for (let i = 0; i < picture.length; i += 1024 * 1024 * 2) {
-      const upload = await this.fetch(
-        sendUrlRequest,
+    if (isPdf) {
+      // Documents require a single PUT of the full file — no chunking, no finalize step
+      await this.fetch(
+        uploadUrl,
         {
           method: 'PUT',
           headers: {
             'X-Restli-Protocol-Version': '2.0.0',
             'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${accessToken}`,
-            ...(isVideo
-              ? { 'Content-Type': 'application/octet-stream' }
-              : isPdf
-              ? { 'Content-Type': 'application/pdf' }
-              : {}),
+            'Content-Type': 'application/octet-stream',
           },
-          body: picture.slice(i, i + 1024 * 1024 * 2),
+          body: picture,
         },
         'linkedin',
         0,
         true
       );
-
-      etags.push(upload.headers.get('etag'));
-    }
-
-    if (isVideo) {
-      const a = await this.fetch(
-        'https://api.linkedin.com/rest/videos?action=finalizeUpload',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            finalizeUploadRequest: {
-              video,
-              uploadToken: '',
-              uploadedPartIds: etags,
+    } else {
+      const etags = [];
+      for (let i = 0; i < picture.length; i += 1024 * 1024 * 2) {
+        const upload = await this.fetch(
+          sendUrlRequest,
+          {
+            method: 'PUT',
+            headers: {
+              'X-Restli-Protocol-Version': '2.0.0',
+              'LinkedIn-Version': LINKEDIN_API_VERSION,
+              Authorization: `Bearer ${accessToken}`,
+              ...(isVideo
+                ? { 'Content-Type': 'application/octet-stream' }
+                : {}),
             },
-          }),
-          headers: {
-            'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': LINKEDIN_API_VERSION,
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
+            body: picture.slice(i, i + 1024 * 1024 * 2),
           },
-        }
-      );
+          'linkedin',
+          0,
+          true
+        );
+
+        etags.push(upload.headers.get('etag'));
+      }
+
+      if (isVideo) {
+        await this.fetch(
+          'https://api.linkedin.com/rest/videos?action=finalizeUpload',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              finalizeUploadRequest: {
+                video,
+                uploadToken: '',
+                uploadedPartIds: etags,
+              },
+            }),
+            headers: {
+              'X-Restli-Protocol-Version': '2.0.0',
+              'LinkedIn-Version': LINKEDIN_API_VERSION,
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+      }
     }
 
     return finalOutput;
