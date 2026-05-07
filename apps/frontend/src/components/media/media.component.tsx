@@ -218,7 +218,7 @@ export const MediaBox: FC<{
         ? 'image/*'
         : type == 'video'
         ? 'video/mp4'
-        : 'image/*,video/mp4',
+        : 'image/*,video/mp4,application/pdf',
     onUploadSuccess: async (arr) => {
       uppy.clear();
       await mutate();
