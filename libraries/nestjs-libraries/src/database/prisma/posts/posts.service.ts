@@ -183,6 +183,7 @@ export class PostsService {
             })
           )
         )
+          .filter((m) => !!m.path)
           .map((m) => {
             return {
               ...m,
