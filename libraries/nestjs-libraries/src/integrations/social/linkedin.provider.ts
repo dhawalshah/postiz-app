@@ -45,7 +45,19 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
         value: string;
       }
     | undefined {
-
+    try {
+      const parsed = JSON.parse(body);
+      const msg =
+        parsed?.message ||
+        parsed?.errorDetails?.[0]?.message ||
+        parsed?.error?.message ||
+        '';
+      if (msg) {
+        return { type: 'bad-body', value: msg };
+      }
+    } catch {
+      // not JSON
+    }
     return undefined;
   }
   async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
