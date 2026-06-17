@@ -356,6 +356,14 @@ export class PostsService {
         return;
       }
     } catch (err: any) {
+      // Log ALL publish failures, not just BadBody — otherwise Prisma/Axios/etc.
+      // errors are swallowed (stored shallow on the post, invisible in logs).
+      console.error(
+        '[Error] publish failed on',
+        firstPost.integration?.providerIdentifier,
+        firstPost?.integration?.name,
+        err
+      );
       await this._postRepository.changeState(
         firstPost.id,
         'ERROR',
