@@ -46,11 +46,18 @@ export class RefreshIntegrationService {
     integration: Integration,
     socialProvider: SocialProvider
   ): Promise<AuthTokenDetails | false> {
-    const refresh: false | AuthTokenDetails = await socialProvider
-      .refreshToken(integration.refreshToken)
-      .catch((err) => false);
+    const refresh: false | AuthTokenDetails = !integration.refreshToken
+      ? false
+      : await socialProvider
+          .refreshToken(integration.refreshToken)
+          .catch((err) => false);
 
-    if (!refresh) {
+    // Treat a missing/empty refresh token OR a response without an accessToken as
+    // a failed refresh. Otherwise refresh() calls createOrUpdateIntegration with
+    // token=undefined and Prisma throws "Argument `token` is missing", which
+    // silently sends scheduled posts to ERROR. Instead, mark the channel as
+    // needing reconnect and surface a clear in-app "please reconnect" notice.
+    if (!refresh || !refresh.accessToken) {
       await this._integrationService.refreshNeeded(
         integration.organizationId,
         integration.id
