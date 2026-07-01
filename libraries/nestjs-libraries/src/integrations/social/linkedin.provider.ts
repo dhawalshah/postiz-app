@@ -721,8 +721,16 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
         m.path.toLowerCase().includes('pdf')
       );
       if (nativePdf) {
+        // Prefer the original uploaded filename (Media.name, carried through
+        // on the media object even though MediaContent's declared type
+        // doesn't list it) over the storage path, which is a CDN/hash-based
+        // name the uploader never chose. Falls back to the old path-derived
+        // logic if `name` is ever missing.
+        const originalName = (nativePdf as any).name as string | undefined;
         pdfTitle =
-          nativePdf.path.split('/').pop()?.split('?')[0] || 'document.pdf';
+          originalName ||
+          nativePdf.path.split('/').pop()?.split('?')[0] ||
+          'document.pdf';
       }
     }
 
