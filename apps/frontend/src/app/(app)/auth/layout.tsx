@@ -31,10 +31,9 @@ export default async function AuthLayout({
       </div>
       <div className="text-[36px] flex-1 pt-[88px] hidden lg:flex flex-col items-center">
         <div className="text-center">
-          Over <span className="text-[42px] text-[#FC69FF]">18,000+</span>{' '}
-          Entrepreneurs use
+          <span className="text-[42px] text-[#FFCC14]">2Stallions Social</span>
           <br />
-          2Stallions Social To Grow Their Social Presence
+          Plan, Schedule, and Publish Across Every Channel
         </div>
         <TestimonialComponent />
       </div>
