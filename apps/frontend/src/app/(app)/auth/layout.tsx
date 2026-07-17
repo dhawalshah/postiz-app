@@ -31,9 +31,10 @@ export default async function AuthLayout({
       </div>
       <div className="text-[36px] flex-1 pt-[88px] hidden lg:flex flex-col items-center">
         <div className="text-center">
-          <span className="text-[42px] text-[#FFCC14]">2Stallions Social</span>
+          The <span className="text-[#FFCC14]">2Stallions</span> social
+          publishing platform,
           <br />
-          Plan, Schedule, and Publish Across Every Channel
+          built on Postiz.
         </div>
         <TestimonialComponent />
       </div>
