@@ -26,6 +26,15 @@ export default async function Auth(params: {searchParams: {provider: string}}) {
             <Link className="underline hover:font-bold" href="/auth/login">
               {t('login_instead', 'Login instead')}
             </Link>
+            <p className="mt-4 text-sm opacity-70">
+              <Link href="/terms" className="underline cursor-pointer">
+                {t('terms_of_service', 'Terms of Service')}
+              </Link>
+              &nbsp;&middot;&nbsp;
+              <Link href="/privacy-policy" className="underline cursor-pointer">
+                {t('privacy_policy', 'Privacy Policy')}
+              </Link>
+            </p>
           </div>
         </>
       );

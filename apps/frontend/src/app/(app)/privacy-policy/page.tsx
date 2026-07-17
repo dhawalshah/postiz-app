@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy - Postiz',
+  title: 'Privacy Policy - 2Stallions',
   description: 'Privacy Policy',
 };
 
@@ -20,8 +20,10 @@ export default function PrivacyPolicyPage() {
           collects, uses, and protects data through this Service - a
           social media scheduling and publishing platform built on Postiz,
           used by 2Stallions to manage content across social media
-          platforms, including TikTok, on behalf of its own accounts and
-          its clients&apos; accounts.
+          platforms, including LinkedIn (personal profiles and company
+          pages), Instagram, Facebook (business pages), YouTube, and
+          TikTok, on behalf of its own accounts and its clients&apos;
+          accounts.
         </p>
 
         <h2 className="text-[20px] font-[500] mt-[12px]">1. Information we collect</h2>
@@ -32,7 +34,8 @@ export default function PrivacyPolicyPage() {
           </li>
           <li>
             <strong>Connected platform data:</strong> when you connect a
-            social media account (e.g. TikTok, YouTube), we store the
+            social media account (e.g. LinkedIn, Instagram, Facebook,
+            YouTube, TikTok), we store the
             OAuth access and refresh tokens issued by that platform, and
             basic public profile information needed to identify the
             connected account, such as display name and profile picture.
@@ -43,7 +46,27 @@ export default function PrivacyPolicyPage() {
           </li>
         </ul>
 
-        <h2 className="text-[20px] font-[500] mt-[12px]">2. TikTok data and permissions</h2>
+        <h2 className="text-[20px] font-[500] mt-[12px]">2. Platform data and permissions</h2>
+        <p>
+          When you connect a LinkedIn account, we request permissions via
+          LinkedIn&apos;s official OAuth flow to identify the connected
+          profile or company page and to create and manage posts on it at
+          your direction. When you connect an Instagram account or a
+          Facebook business page, we request permissions via Meta&apos;s
+          Graph API to identify the connected page or account and to
+          publish and manage the content you schedule. When you connect a
+          YouTube channel, we request permissions via Google OAuth to
+          identify the channel and to upload and manage the videos you
+          schedule. Our use of information received from Google APIs
+          adheres to the{' '}
+          <a
+            className="underline"
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+          >
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements.
+        </p>
         <p>
           When you connect a TikTok account, we request the following
           permissions through TikTok Login Kit:
@@ -61,9 +84,10 @@ export default function PrivacyPolicyPage() {
           </li>
         </ul>
         <p>
-          We only access TikTok data to perform the scheduling and
-          publishing actions you request. We do not use TikTok data for
-          advertising, and we do not sell TikTok data to any third party.
+          Across all platforms, we only access connected-account data to
+          perform the scheduling and publishing actions you request. We do
+          not use connected-platform data for advertising, and we do not
+          sell it to any third party.
         </p>
 
         <h2 className="text-[20px] font-[500] mt-[12px]">3. How we use information</h2>
@@ -77,7 +101,8 @@ export default function PrivacyPolicyPage() {
         <h2 className="text-[20px] font-[500] mt-[12px]">4. Data sharing</h2>
         <p>
           We do not sell or rent your data. We share data with a connected
-          platform (e.g. TikTok, YouTube) only as strictly necessary to
+          platform (e.g. LinkedIn, Instagram, Facebook, YouTube, TikTok)
+          only as strictly necessary to
           carry out the action you requested, such as publishing a
           scheduled post, using that platform&apos;s own official API.
         </p>
@@ -103,10 +128,13 @@ export default function PrivacyPolicyPage() {
         <p>
           You may disconnect a connected account at any time from within
           the Service, or revoke our access directly from that
-          platform&apos;s own connected-apps settings (for TikTok:
-          TikTok Settings and Privacy &gt; Security and permissions &gt;
-          Manage third-party permissions). You may request access to, or
-          deletion of, your data by contacting us using the details below.
+          platform&apos;s own connected-apps settings (e.g. LinkedIn
+          Settings &gt; Data privacy &gt; Permitted services; Facebook and
+          Instagram Settings &gt; Apps and websites; Google Account &gt;
+          Security &gt; Third-party access; TikTok Settings and Privacy
+          &gt; Security and permissions &gt; Manage third-party
+          permissions). You may request access to, or deletion of, your
+          data by contacting us using the details below.
         </p>
 
         <h2 className="text-[20px] font-[500] mt-[12px]">8. Children&apos;s privacy</h2>

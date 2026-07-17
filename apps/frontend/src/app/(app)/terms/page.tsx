@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service - Postiz',
+  title: 'Terms of Service - 2Stallions',
   description: 'Terms of Service',
 };
 
@@ -35,9 +35,13 @@ export default function TermsPage() {
 
         <h2 className="text-[20px] font-[500] mt-[12px]">2. Connecting third-party accounts</h2>
         <p>
-          The Service lets you connect social media accounts, including
-          TikTok and YouTube, using each platform&apos;s official OAuth
-          login. For TikTok specifically, we request the following
+          The Service lets you connect social media accounts using each
+          platform&apos;s official OAuth login, including: LinkedIn
+          (personal profiles and company pages), Instagram, Facebook
+          (business pages), YouTube, and TikTok. In each case we request
+          only the permissions needed to identify the connected account
+          and to publish and manage the content you schedule through the
+          Service. For TikTok specifically, we request the following
           permissions via TikTok Login Kit:
         </p>
         <ul className="list-disc pl-[24px] flex flex-col gap-[6px]">
@@ -54,7 +58,11 @@ export default function TermsPage() {
           </li>
         </ul>
         <p>
-          These permissions are used solely to operate the scheduling and
+          For LinkedIn, we use LinkedIn&apos;s official API to post to
+          your personal profile or company pages you administer. For
+          Instagram and Facebook business pages, we use Meta&apos;s Graph
+          API. For YouTube, we use Google&apos;s YouTube Data API. These
+          permissions are used solely to operate the scheduling and
           publishing features you use. We do not post, edit, or delete
           content on your connected accounts except as you explicitly
           schedule or request through the Service.
@@ -65,8 +73,10 @@ export default function TermsPage() {
           You retain ownership of all content you upload or create through
           the Service. You are responsible for ensuring content you
           schedule or publish complies with the applicable platform&apos;s
-          own terms and community guidelines (e.g. TikTok&apos;s Terms of
-          Service and Community Guidelines).
+          own terms and community guidelines (e.g. LinkedIn&apos;s User
+          Agreement, Meta&apos;s Terms of Service for Instagram and
+          Facebook, YouTube&apos;s Terms of Service, and TikTok&apos;s
+          Terms of Service and Community Guidelines).
         </p>
 
         <h2 className="text-[20px] font-[500] mt-[12px]">4. Revoking access</h2>
