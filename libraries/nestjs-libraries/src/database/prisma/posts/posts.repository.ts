@@ -30,9 +30,22 @@ export class PostsRepository {
   checkPending15minutesBack() {
     return this._post.model.post.findMany({
       where: {
+        // The lower bound used to be 30 minutes, which meant a post missed by more
+        // than half an hour — a wedged worker, a restart, a queue that lost the job —
+        // was orphaned in QUEUE forever with nothing to retry it. 24 hours lets a full
+        // day of missed posts self-heal, while still refusing to publish content stale
+        // enough that firing it unannounced would surprise the author.
         publishDate: {
           lte: dayjs.utc().subtract(15, 'minute').toDate(),
-          gte: dayjs.utc().subtract(30, 'minute').toDate(),
+          gte: dayjs.utc().subtract(24, 'hour').toDate(),
+        },
+        // Matches searchForMissingThreeHoursPosts: re-queueing a post whose integration
+        // is disabled or needs reconnecting can't succeed, and post() raises an in-app
+        // notification on every attempt — over a 24h window that is notification spam.
+        integration: {
+          refreshNeeded: false,
+          inBetweenSteps: false,
+          disabled: false,
         },
         state: 'QUEUE',
         deletedAt: null,
