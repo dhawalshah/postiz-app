@@ -8,7 +8,11 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import sharp from 'sharp';
 import { lookup } from 'mime-types';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { PostPlug } from '@gitroom/helpers/decorators/post.plug';
 import { LinkedinDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/linkedin.dto';
@@ -17,6 +21,13 @@ import { Readable } from 'stream';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
 export const LINKEDIN_API_VERSION = '202601';
+
+// How long to wait for a post to become commentable. Video posts are not
+// commentable until LinkedIn finishes transcoding, which scales with clip
+// length -- seconds for a short, minutes for a long clip. Capped at 8 minutes:
+// past that we stop waiting and surface the failure rather than holding the
+// publish job open indefinitely.
+export const LINKEDIN_COMMENT_MAX_WAIT = 8 * 60 * 1000;
 
 @Rules(
   'LinkedIn can have maximum one attachment when selecting video, when choosing a carousel on LinkedIn minimum amount of attachment must be two, and only pictures, if uploading a video, LinkedIn can have only one attachment'
@@ -628,6 +639,85 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     return response.headers.get('x-restli-id')!;
   }
 
+  // LinkedIn hands back different URN families depending on the post content:
+  // text/image posts come back as urn:li:share:<id>, while video (and other
+  // UGC-backed) posts come back as urn:li:ugcPost:<id>. Two separate things can
+  // then make a comment 404: we may be holding the wrong URN family, or the
+  // video may still be transcoding and the post simply is not commentable yet.
+  //
+  // A GET on socialActions answers both at once -- it 404s while the post is
+  // not ready and 200s on whichever variant is the real one -- and unlike a
+  // POST it is safe to repeat, so we can wait out a long encode without any
+  // risk of landing duplicate comments.
+  private commentVariants(
+    parentPostId: string
+  ): { urn: string; versioned: boolean }[] {
+    const urn = decodeURIComponent(parentPostId);
+    const match = urn.match(/^urn:li:(ugcPost|share):(.+)$/);
+    const swapped = match
+      ? `urn:li:${match[1] === 'ugcPost' ? 'share' : 'ugcPost'}:${match[2]}`
+      : undefined;
+
+    // Legacy v2 with the URN exactly as LinkedIn returned it goes first: that
+    // is what already works for text/image posts, so it stays the happy path.
+    return [urn, ...(swapped ? [swapped] : [])].flatMap((u) =>
+      [false, true].map((versioned) => ({ urn: u, versioned }))
+    );
+  }
+
+  private socialActionsUrl(urn: string, versioned: boolean, suffix = '') {
+    return versioned
+      ? `https://api.linkedin.com/rest/socialActions/${encodeURIComponent(
+          urn
+        )}${suffix}`
+      : `https://api.linkedin.com/v2/socialActions/${urn}${suffix}`;
+  }
+
+  private commentHeaders(accessToken: string, versioned: boolean) {
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      'X-Restli-Protocol-Version': '2.0.0',
+      ...(versioned ? { 'LinkedIn-Version': LINKEDIN_API_VERSION } : {}),
+    };
+  }
+
+  // Poll until the post is actually commentable. Short videos finish in
+  // seconds, but a multi-minute clip can take a lot longer, so we keep probing
+  // for up to LINKEDIN_COMMENT_MAX_WAIT -- fast at first, then backing off.
+  private async waitForCommentablePost(
+    accessToken: string,
+    parentPostId: string
+  ): Promise<{ urn: string; versioned: boolean } | undefined> {
+    const variants = this.commentVariants(parentPostId);
+    const deadline = Date.now() + LINKEDIN_COMMENT_MAX_WAIT;
+    let waited = 0;
+
+    while (Date.now() < deadline) {
+      for (const variant of variants) {
+        const response = await fetch(
+          this.socialActionsUrl(variant.urn, variant.versioned),
+          {
+            method: 'GET',
+            headers: this.commentHeaders(accessToken, variant.versioned),
+          }
+        );
+
+        if (response.status === 200) {
+          return variant;
+        }
+      }
+
+      // Tight loop for the first minute, then ease off so a long encode does
+      // not mean hundreds of requests.
+      const delay = waited < 60000 ? 5000 : 15000;
+      waited += delay;
+      await timer(delay);
+    }
+
+    return undefined;
+  }
+
   private async createCommentPost(
     id: string,
     accessToken: string,
@@ -638,25 +728,39 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     const actor =
       type === 'personal' ? `urn:li:person:${id}` : `urn:li:organization:${id}`;
 
-    const response = await this.fetch(
-      `https://api.linkedin.com/v2/socialActions/${decodeURIComponent(
-        parentPostId
-      )}/comments`,
+    // If the poll times out we still take one shot at the original URN, so the
+    // failure carries a real LinkedIn error rather than "we gave up".
+    const variant =
+      (await this.waitForCommentablePost(accessToken, parentPostId)) ||
+      this.commentVariants(parentPostId)[0];
+
+    const response = await fetch(
+      this.socialActionsUrl(variant.urn, variant.versioned, '/comments'),
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: this.commentHeaders(accessToken, variant.versioned),
         body: JSON.stringify({
           actor,
-          object: parentPostId,
+          object: variant.urn,
           message: {
             text: this.fixText(post.message),
           },
         }),
       }
     );
+
+    if (response.status !== 200 && response.status !== 201) {
+      const detail = `${response.status} ${await response
+        .text()
+        .catch(() => '')}`;
+
+      throw new BadBody(
+        'linkedin',
+        JSON.stringify({ message: detail }),
+        JSON.stringify({ object: variant.urn }),
+        `Could not post the first comment on ${variant.urn}. The post itself is live at https://www.linkedin.com/feed/update/${variant.urn} -- LinkedIn rejected the comment with: ${detail}`
+      );
+    }
 
     const { object } = await response.json();
     return object;
