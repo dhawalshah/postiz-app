@@ -726,7 +726,12 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   ): Promise<string> {
     const actor =
       type === 'personal' ? `urn:li:person:${id}` : `urn:li:organization:${id}`;
-    const message = this.fixText(post.message);
+    // NOT fixText(): that escapes Little Text Format specials (_ ( ) @ # ...),
+    // which only the Posts API `commentary` field unescapes. A comment's
+    // `message.text` is plain text, so the backslashes survive verbatim and
+    // break the rendered comment -- a URL with utm_source= arrives as
+    // utm\_source= and stops being auto-linked.
+    const message = post.message;
     const variants = this.commentVariants(parentPostId);
     const deadline = Date.now() + LINKEDIN_COMMENT_MAX_WAIT;
 
