@@ -103,11 +103,23 @@ export class IntegrationService {
     timezone?: number,
     customInstanceDetails?: string
   ) {
-    const uploadedPicture = picture
-      ? picture?.indexOf('imagedelivery.net') > -1
-        ? picture
-        : await this.storage.uploadSimple(picture)
-      : undefined;
+    let uploadedPicture: string | undefined;
+    try {
+      uploadedPicture = picture
+        ? picture?.indexOf('imagedelivery.net') > -1
+          ? picture
+          : await this.storage.uploadSimple(picture)
+        : undefined;
+    } catch (e) {
+      // Avatar fetch can fail (e.g. LinkedIn media CDN 403s server-side fetches,
+      // or a signed/stored avatar URL has expired). A missing avatar must NOT
+      // abort token persistence or channel (re)connect — fall back to no picture.
+      console.error(
+        '[integration] avatar fetch failed, continuing without picture',
+        e
+      );
+      uploadedPicture = undefined;
+    }
 
     return this._integrationRepository.createOrUpdateIntegration(
       additionalSettings,

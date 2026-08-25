@@ -127,6 +127,18 @@ export function Login() {
                     {t('forgot_password', 'Forgot password')}
                   </Link>
                 </p>
+                <p className="mt-4 text-sm opacity-70">
+                  <Link href="/terms" className="underline cursor-pointer">
+                    {t('terms_of_service', 'Terms of Service')}
+                  </Link>
+                  &nbsp;&middot;&nbsp;
+                  <Link
+                    href="/privacy-policy"
+                    className="underline cursor-pointer"
+                  >
+                    {t('privacy_policy', 'Privacy Policy')}
+                  </Link>
+                </p>
               </div>
             </div>
           </div>

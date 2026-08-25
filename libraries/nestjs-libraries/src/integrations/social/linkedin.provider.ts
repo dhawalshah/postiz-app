@@ -8,13 +8,26 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import sharp from 'sharp';
 import { lookup } from 'mime-types';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { PostPlug } from '@gitroom/helpers/decorators/post.plug';
 import { LinkedinDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/linkedin.dto';
 import imageToPDF from 'image-to-pdf';
 import { Readable } from 'stream';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+
+export const LINKEDIN_API_VERSION = '202601';
+
+// How long to wait for a post to become commentable. Video posts are not
+// commentable until LinkedIn finishes transcoding, which scales with clip
+// length -- seconds for a short, minutes for a long clip. Capped at 8 minutes:
+// past that we stop waiting and surface the failure rather than holding the
+// publish job open indefinitely.
+export const LINKEDIN_COMMENT_MAX_WAIT = 8 * 60 * 1000;
 
 @Rules(
   'LinkedIn can have maximum one attachment when selecting video, when choosing a carousel on LinkedIn minimum amount of attachment must be two, and only pictures, if uploading a video, LinkedIn can have only one attachment'
@@ -43,7 +56,19 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
         value: string;
       }
     | undefined {
-
+    try {
+      const parsed = JSON.parse(body);
+      const msg =
+        parsed?.message ||
+        parsed?.errorDetails?.[0]?.message ||
+        parsed?.error?.message ||
+        '';
+      if (msg) {
+        return { type: 'bad-body', value: msg };
+      }
+    } catch {
+      // not JSON
+    }
     return undefined;
   }
   async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
@@ -194,7 +219,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
           headers: {
             'Content-Type': 'application/json',
             'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${token}`,
           },
         }
@@ -239,7 +264,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
           headers: {
             'Content-Type': 'application/json',
             'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
@@ -264,52 +289,70 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     const sendUrlRequest = uploadInstructions?.[0]?.uploadUrl || uploadUrl;
     const finalOutput = video || image || document;
 
-    const etags = [];
-    for (let i = 0; i < picture.length; i += 1024 * 1024 * 2) {
-      const upload = await this.fetch(
-        sendUrlRequest,
+    if (isPdf) {
+      // Documents require a single PUT of the full file — no chunking, no finalize step
+      await this.fetch(
+        uploadUrl,
         {
           method: 'PUT',
           headers: {
             'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${accessToken}`,
-            ...(isVideo
-              ? { 'Content-Type': 'application/octet-stream' }
-              : isPdf
-              ? { 'Content-Type': 'application/pdf' }
-              : {}),
+            'Content-Type': 'application/octet-stream',
           },
-          body: picture.slice(i, i + 1024 * 1024 * 2),
+          body: picture,
         },
         'linkedin',
         0,
         true
       );
-
-      etags.push(upload.headers.get('etag'));
-    }
-
-    if (isVideo) {
-      const a = await this.fetch(
-        'https://api.linkedin.com/rest/videos?action=finalizeUpload',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            finalizeUploadRequest: {
-              video,
-              uploadToken: '',
-              uploadedPartIds: etags,
+    } else {
+      const etags = [];
+      for (let i = 0; i < picture.length; i += 1024 * 1024 * 2) {
+        const upload = await this.fetch(
+          sendUrlRequest,
+          {
+            method: 'PUT',
+            headers: {
+              'X-Restli-Protocol-Version': '2.0.0',
+              'LinkedIn-Version': LINKEDIN_API_VERSION,
+              Authorization: `Bearer ${accessToken}`,
+              ...(isVideo
+                ? { 'Content-Type': 'application/octet-stream' }
+                : {}),
             },
-          }),
-          headers: {
-            'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': '202601',
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
+            body: picture.slice(i, i + 1024 * 1024 * 2),
           },
-        }
-      );
+          'linkedin',
+          0,
+          true
+        );
+
+        etags.push(upload.headers.get('etag'));
+      }
+
+      if (isVideo) {
+        await this.fetch(
+          'https://api.linkedin.com/rest/videos?action=finalizeUpload',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              finalizeUploadRequest: {
+                video,
+                uploadToken: '',
+                uploadedPartIds: etags,
+              },
+            }),
+            headers: {
+              'X-Restli-Protocol-Version': '2.0.0',
+              'LinkedIn-Version': LINKEDIN_API_VERSION,
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+      }
     }
 
     return finalOutput;
@@ -498,8 +541,9 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
 
   private async prepareMediaBuffer(mediaUrl: string): Promise<Buffer> {
     const isVideo = mediaUrl.indexOf('mp4') > -1;
+    const isPdf = mediaUrl.toLowerCase().indexOf('pdf') > -1;
 
-    if (isVideo) {
+    if (isVideo || isPdf) {
       return Buffer.from(await readOrFetch(mediaUrl));
     }
 
@@ -511,7 +555,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       .toBuffer();
   }
 
-  private buildPostContent(isPdf: boolean, mediaIds: string[]) {
+  private buildPostContent(mediaIds: string[], pdfTitle?: string) {
     if (mediaIds.length === 0) {
       return {};
     }
@@ -520,7 +564,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       return {
         content: {
           media: {
-            ...(isPdf ? { title: 'slides.pdf' } : {}),
+            ...(pdfTitle ? { title: pdfTitle } : {}),
             id: mediaIds[0],
           },
         },
@@ -541,7 +585,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     type: 'company' | 'personal',
     message: string,
     mediaIds: string[],
-    isPdf: boolean
+    pdfTitle?: string
   ) {
     const author =
       type === 'personal' ? `urn:li:person:${id}` : `urn:li:organization:${id}`;
@@ -555,7 +599,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
         targetEntities: [] as string[],
         thirdPartyDistributionChannels: [] as string[],
       },
-      ...this.buildPostContent(isPdf, mediaIds),
+      ...this.buildPostContent(mediaIds, pdfTitle),
       lifecycleState: 'PUBLISHED',
       isReshareDisabledByAuthor: false,
     };
@@ -567,20 +611,20 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     firstPost: PostDetails,
     mediaIds: string[],
     type: 'company' | 'personal',
-    isPdf: boolean
+    pdfTitle?: string
   ): Promise<string> {
     const postPayload = this.createLinkedInPostPayload(
       id,
       type,
       firstPost.message,
       mediaIds,
-      isPdf
+      pdfTitle
     );
 
     const response = await this.fetch('https://api.linkedin.com/rest/posts', {
       method: 'POST',
       headers: {
-        'LinkedIn-Version': '202601',
+        'LinkedIn-Version': LINKEDIN_API_VERSION,
         'X-Restli-Protocol-Version': '2.0.0',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
@@ -595,6 +639,84 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     return response.headers.get('x-restli-id')!;
   }
 
+  // LinkedIn hands back different URN families depending on the post content:
+  // text/image posts come back as urn:li:share:<id>, while video (and other
+  // UGC-backed) posts come back as urn:li:ugcPost:<id>. Two separate things can
+  // then make a comment 404: we may be holding the wrong URN family, or the
+  // video may still be transcoding and the post simply is not commentable yet.
+  //
+  // We cannot tell those apart by reading: every LinkedIn read endpoint that
+  // would answer it (socialActions, posts, ugcPosts, socialMetadata) is 403
+  // ACCESS_DENIED for a w_member_social app, so a probe-then-write design can
+  // never leave the ground. The comment POST itself is the only signal we are
+  // allowed to observe, so we retry that instead -- a 404 means LinkedIn
+  // created nothing, which is exactly the case that is safe to repeat.
+  private commentVariants(
+    parentPostId: string
+  ): { urn: string; versioned: boolean }[] {
+    const urn = decodeURIComponent(parentPostId);
+    const match = urn.match(/^urn:li:(ugcPost|share):(.+)$/);
+    const swapped = match
+      ? `urn:li:${match[1] === 'ugcPost' ? 'share' : 'ugcPost'}:${match[2]}`
+      : undefined;
+
+    // Legacy v2 with the URN exactly as LinkedIn returned it goes first: that
+    // is what already works for text/image posts, so it stays the happy path.
+    return [urn, ...(swapped ? [swapped] : [])].flatMap((u) =>
+      [false, true].map((versioned) => ({ urn: u, versioned }))
+    );
+  }
+
+  private socialActionsUrl(urn: string, versioned: boolean, suffix = '') {
+    return versioned
+      ? `https://api.linkedin.com/rest/socialActions/${encodeURIComponent(
+          urn
+        )}${suffix}`
+      : `https://api.linkedin.com/v2/socialActions/${urn}${suffix}`;
+  }
+
+  // The legacy v2 endpoint takes the URN raw in the path, which is only legal
+  // under Rest.li 1.0. Declaring 2.0.0 there makes LinkedIn reject the
+  // un-encoded colons with 400 ILLEGAL_ARGUMENT "Syntax exception in path
+  // variables", so the header belongs on the versioned endpoint only.
+  private commentHeaders(accessToken: string, versioned: boolean) {
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      ...(versioned
+        ? {
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
+            'X-Restli-Protocol-Version': '2.0.0',
+          }
+        : {}),
+    };
+  }
+
+  private async postComment(
+    accessToken: string,
+    variant: { urn: string; versioned: boolean },
+    actor: string,
+    message: string
+  ) {
+    const response = await fetch(
+      this.socialActionsUrl(variant.urn, variant.versioned, '/comments'),
+      {
+        method: 'POST',
+        headers: this.commentHeaders(accessToken, variant.versioned),
+        body: JSON.stringify({
+          actor,
+          object: variant.urn,
+          message: { text: message },
+        }),
+      }
+    );
+
+    return {
+      status: response.status,
+      body: await response.text().catch(() => ''),
+    };
+  }
+
   private async createCommentPost(
     id: string,
     accessToken: string,
@@ -604,29 +726,66 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   ): Promise<string> {
     const actor =
       type === 'personal' ? `urn:li:person:${id}` : `urn:li:organization:${id}`;
+    // NOT fixText(): that escapes Little Text Format specials (_ ( ) @ # ...),
+    // which only the Posts API `commentary` field unescapes. A comment's
+    // `message.text` is plain text, so the backslashes survive verbatim and
+    // break the rendered comment -- a URL with utm_source= arrives as
+    // utm\_source= and stops being auto-linked.
+    const message = post.message;
+    const variants = this.commentVariants(parentPostId);
+    const deadline = Date.now() + LINKEDIN_COMMENT_MAX_WAIT;
 
-    const response = await this.fetch(
-      `https://api.linkedin.com/v2/socialActions/${decodeURIComponent(
-        parentPostId
-      )}/comments`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
+    let last = { variant: variants[0], status: 0, body: '' };
+    let waited = 0;
+
+    while (true) {
+      // 404 is "this post is not commentable (yet)" -- either the video is
+      // still transcoding or this is the wrong URN family. Nothing was
+      // created, so both are safe to come back to. Anything else (403 on a
+      // scope we do not hold, 400 on a malformed request) will not improve
+      // with time, so if no variant is worth retrying we stop right away
+      // rather than holding the publish job open for the full wait.
+      let retryable = false;
+
+      for (const variant of variants) {
+        const { status, body } = await this.postComment(
+          accessToken,
+          variant,
           actor,
-          object: parentPostId,
-          message: {
-            text: this.fixText(post.message),
-          },
-        }),
-      }
-    );
+          message
+        );
 
-    const { object } = await response.json();
-    return object;
+        if (status === 200 || status === 201) {
+          return JSON.parse(body).object;
+        }
+
+        last = { variant, status, body };
+
+        // Deliberately not retrying 5xx: a server error can hide a comment
+        // that was actually created, and a duplicate comment on a live post
+        // is worse than a failed one. 404 and 429 both guarantee nothing was.
+        retryable ||= status === 404 || status === 429;
+      }
+
+      if (!retryable || Date.now() >= deadline) {
+        break;
+      }
+
+      // Tight loop for the first minute -- short clips finish in seconds --
+      // then ease off so a long encode does not mean hundreds of requests.
+      const delay = waited < 60000 ? 5000 : 15000;
+      waited += delay;
+      await timer(delay);
+    }
+
+    const detail = `${last.status} ${last.body}`;
+
+    throw new BadBody(
+      'linkedin',
+      JSON.stringify({ message: detail }),
+      JSON.stringify({ object: last.variant.urn }),
+      `Could not post the first comment on ${last.variant.urn}. The post itself is live at https://www.linkedin.com/feed/update/${last.variant.urn} -- LinkedIn rejected the comment with: ${detail}`
+    );
   }
 
   private createPostResponse(
@@ -679,6 +838,28 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       uploadedMedia[processedFirstPost.id] || []
     ).filter(Boolean);
 
+    // Determine display title for document posts (carousel or native PDF)
+    let pdfTitle: string | undefined;
+    if (firstPost.settings?.post_as_images_carousel) {
+      pdfTitle = 'slides.pdf';
+    } else {
+      const nativePdf = (processedFirstPost.media || []).find((m) =>
+        m.path.toLowerCase().includes('pdf')
+      );
+      if (nativePdf) {
+        // Prefer the original uploaded filename (Media.name, carried through
+        // on the media object even though MediaContent's declared type
+        // doesn't list it) over the storage path, which is a CDN/hash-based
+        // name the uploader never chose. Falls back to the old path-derived
+        // logic if `name` is ever missing.
+        const originalName = (nativePdf as any).name as string | undefined;
+        pdfTitle =
+          originalName ||
+          nativePdf.path.split('/').pop()?.split('?')[0] ||
+          'document.pdf';
+      }
+    }
+
     // Create the main LinkedIn post
     const mainPostId = await this.createMainPost(
       id,
@@ -686,7 +867,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       processedFirstPost,
       mainPostMediaIds,
       type,
-      !!firstPost.settings?.post_as_images_carousel
+      pdfTitle
     );
 
     // Build response array starting with main post
@@ -746,7 +927,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       headers: {
         'X-Restli-Protocol-Version': '2.0.0',
         'Content-Type': 'application/json',
-        'LinkedIn-Version': '202601',
+        'LinkedIn-Version': LINKEDIN_API_VERSION,
         Authorization: `Bearer ${integration.token}`,
       },
     });
@@ -762,7 +943,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
           headers: {
             'X-Restli-Protocol-Version': '2.0.0',
             'Content-Type': 'application/json',
-            'LinkedIn-Version': '202601',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
             Authorization: `Bearer ${token}`,
           },
         }

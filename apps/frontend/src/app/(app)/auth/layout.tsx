@@ -5,7 +5,6 @@ import { ReactNode } from 'react';
 import Image from 'next/image';
 import loadDynamic from 'next/dynamic';
 import { TestimonialComponent } from '@gitroom/frontend/components/auth/testimonial.component';
-import { LogoTextComponent } from '@gitroom/frontend/components/ui/logo-text.component';
 const ReturnUrlComponent = loadDynamic(() => import('./return.url.component'));
 export default async function AuthLayout({
   children,
@@ -20,16 +19,22 @@ export default async function AuthLayout({
       <ReturnUrlComponent />
       <div className="flex flex-col py-[40px] px-[20px] flex-1 lg:w-[600px] lg:flex-none rounded-[12px] text-white p-[12px] bg-[#1A1919]">
         <div className="w-full max-w-[440px] mx-auto justify-center gap-[20px] h-full flex flex-col text-white">
-          <LogoTextComponent />
+          <Image
+            src="/2stallions-logo.png"
+            alt="2Stallions"
+            width={220}
+            height={75}
+            priority
+          />
           <div className="flex">{children}</div>
         </div>
       </div>
       <div className="text-[36px] flex-1 pt-[88px] hidden lg:flex flex-col items-center">
         <div className="text-center">
-          Over <span className="text-[42px] text-[#FC69FF]">18,000+</span>{' '}
-          Entrepreneurs use
+          The <span className="text-[#FFCC14]">2Stallions</span> social
+          publishing platform,
           <br />
-          Postiz To Grow Their Social Presence
+          built on Postiz.
         </div>
         <TestimonialComponent />
       </div>
